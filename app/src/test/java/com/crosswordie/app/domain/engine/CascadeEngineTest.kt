@@ -138,4 +138,35 @@ class CascadeEngineTest {
         val updatedIntersecting = afterFailBoard.slotById(intersectingSlot.id)!!
         assertEquals(expectedChar, updatedIntersecting.lockedIndices[indexInIntersecting])
     }
+
+    @Test
+    fun `easy difficulty starter hint persists across multiple guesses on the same slot`() {
+        val easyBoard = generator.generate(
+            seed = 777L,
+            difficulty = com.crosswordie.app.domain.model.DifficultyLevel.EASY
+        )
+        val firstSlot = easyBoard.activeSlot!!
+        assertTrue("Easy mode first slot should start with 1 locked hint", firstSlot.lockedIndices.isNotEmpty())
+        val (lockedIdx, lockedChar) = firstSlot.lockedIndices.entries.first()
+
+        // Build a wrong guess that keeps the lockedChar at lockedIdx
+        val chars = CharArray(firstSlot.length) { i ->
+            if (i == lockedIdx) lockedChar else 'Z'
+        }
+        var wrongGuess = String(chars)
+        if (wrongGuess == firstSlot.targetWord) {
+            val altChars = CharArray(firstSlot.length) { i ->
+                if (i == lockedIdx) lockedChar else 'Q'
+            }
+            wrongGuess = String(altChars)
+        }
+
+        // Submit 2 wrong guesses (reaching row 3, just like in the user screenshot)
+        val res1 = CascadeEngine.submitGuess(easyBoard, wrongGuess)
+        val res2 = CascadeEngine.submitGuess(res1.updatedBoard, wrongGuess)
+        val slotAfter2Guesses = res2.updatedBoard.activeSlot!!
+
+        assertEquals(2, slotAfter2Guesses.guesses.size)
+        assertEquals(lockedChar, slotAfter2Guesses.lockedIndices[lockedIdx])
+    }
 }

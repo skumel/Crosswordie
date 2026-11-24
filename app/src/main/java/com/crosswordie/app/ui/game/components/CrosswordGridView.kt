@@ -107,7 +107,7 @@ fun CrosswordGridView(
                             val isCursorCell = coord == activeCursorCoord
                             val idxInActiveSlot = activeSlot?.indexOfCoord(coord) ?: -1
                             val typedPreviewChar = if (isInActiveSlot && idxInActiveSlot >= 0) {
-                                currentInputMap[idxInActiveSlot]
+                                activeSlot?.lockedIndices?.get(idxInActiveSlot) ?: currentInputMap[idxInActiveSlot]
                             } else null
 
                             CrosswordCellBox(

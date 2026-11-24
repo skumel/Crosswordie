@@ -140,7 +140,7 @@ fun GameScreen(
 
                 // 4. Bottom Zone: Context-Aware Custom QWERTY Keyboard (Backspace on Left, Green Guess on Right)
                 val isSubmitReady = !activeSlot.isCompleted &&
-                    state.currentInputMap.size == activeSlot.length
+                    (state.currentInputMap.keys + activeSlot.lockedIndices.keys).size == activeSlot.length
 
                 GameKeyboard(
                     keyboardState = state.keyboardState,

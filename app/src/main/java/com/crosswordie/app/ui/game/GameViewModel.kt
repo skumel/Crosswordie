@@ -64,12 +64,47 @@ class GameViewModel(
                 Triple(currentStats, daily, endless)
             }
 
+            val previewBoard = _uiState.value.board ?: savedDaily ?: savedEndless
+            val activePreviewSlot = previewBoard?.activeSlot
+            val syncedInputMap = if (activePreviewSlot != null) {
+                HashMap(activePreviewSlot.lockedIndices)
+            } else {
+                emptyMap()
+            }
+            val syncedCursor = if (activePreviewSlot != null) {
+                findFirstUnlockedIndex(activePreviewSlot, 0)
+            } else {
+                0
+            }
+            val syncedKeyboard = if (activePreviewSlot != null) {
+                WordleEvaluator.computeKeyboardState(
+                    activePreviewSlot.guesses,
+                    activePreviewSlot.lockedIndices
+                )
+            } else {
+                emptyMap()
+            }
+
             _uiState.update {
                 it.copy(
                     isLoading = false,
                     stats = stats,
                     selectedDifficulty = stats.preferredDifficulty,
-                    board = it.board ?: savedDaily ?: savedEndless,
+                    board = previewBoard,
+                    currentInputMap = if (it.currentInputMap.isNotEmpty() && it.board?.puzzleId == previewBoard?.puzzleId) {
+                        HashMap(it.currentInputMap).apply { putAll(syncedInputMap) }
+                    } else {
+                        syncedInputMap
+                    },
+                    cursorIndex = if (it.board?.puzzleId == previewBoard?.puzzleId &&
+                        activePreviewSlot != null &&
+                        !activePreviewSlot.lockedIndices.containsKey(it.cursorIndex)
+                    ) {
+                        it.cursorIndex
+                    } else {
+                        syncedCursor
+                    },
+                    keyboardState = syncedKeyboard,
                     hasSavedDailyInProgress = savedDaily != null && !savedDaily.isBoardComplete,
                     hasSavedEndlessInProgress = savedEndless != null && !savedEndless.isBoardComplete
                 )
@@ -143,10 +178,32 @@ class GameViewModel(
     fun resumeCurrentGame() {
         val currentBoard = _uiState.value.board
         if (currentBoard != null) {
+            val slot = currentBoard.activeSlot
+            val mergedInput = HashMap(_uiState.value.currentInputMap)
+            if (slot != null) {
+                mergedInput.putAll(slot.lockedIndices)
+            }
+            val safeCursor = if (slot != null &&
+                (slot.lockedIndices.containsKey(_uiState.value.cursorIndex) ||
+                    _uiState.value.cursorIndex !in 0 until slot.length)
+            ) {
+                findFirstUnlockedIndex(slot, 0)
+            } else {
+                _uiState.value.cursorIndex
+            }
+            val syncedKeyboard = if (slot != null) {
+                WordleEvaluator.computeKeyboardState(slot.guesses, slot.lockedIndices)
+            } else {
+                _uiState.value.keyboardState
+            }
+
             _uiState.update {
                 it.copy(
                     showOpeningMenu = false,
-                    showPauseDialog = false
+                    showPauseDialog = false,
+                    currentInputMap = mergedInput,
+                    cursorIndex = safeCursor,
+                    keyboardState = syncedKeyboard
                 )
             }
         } else {
@@ -319,6 +376,7 @@ class GameViewModel(
         if (locked.containsKey(targetIndex) || targetIndex !in 0 until slot.length) return
 
         val newInput = HashMap(state.currentInputMap)
+        newInput.putAll(locked)
         newInput[targetIndex] = upper
 
         val nextCursor = findNextUnlockedIndexAfter(slot, newInput, targetIndex)
@@ -339,6 +397,7 @@ class GameViewModel(
 
         val locked = slot.lockedIndices
         val newInput = HashMap(state.currentInputMap)
+        newInput.putAll(locked)
 
         if (!locked.containsKey(state.cursorIndex) && newInput.containsKey(state.cursorIndex)) {
             newInput.remove(state.cursorIndex)
@@ -374,9 +433,14 @@ class GameViewModel(
         val slot = state.activeSlot ?: return
         if (slot.isCompleted || board.isBoardComplete) return
 
-        if (state.currentInputMap.size < slot.length) {
+        val effectiveInput = HashMap(state.currentInputMap).apply {
+            putAll(slot.lockedIndices)
+        }
+
+        if (effectiveInput.size < slot.length) {
             _uiState.update {
                 it.copy(
+                    currentInputMap = effectiveInput,
                     bannerMessage = "Complete all ${slot.length} letters first",
                     invalidGuessShakeTrigger = it.invalidGuessShakeTrigger + 1
                 )
@@ -385,7 +449,7 @@ class GameViewModel(
         }
 
         val guessWord = (0 until slot.length)
-            .map { idx -> state.currentInputMap.getValue(idx) }
+            .map { idx -> effectiveInput.getValue(idx) }
             .joinToString("")
 
         val idx = wordIndex

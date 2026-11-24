@@ -227,8 +227,9 @@ fun WordGuessPanel(
                                 }
 
                                 isCurrentInputRow -> {
-                                    val isLockedHint = activeSlot.lockedIndices.containsKey(colIdx)
-                                    val ch = currentInputMap[colIdx]
+                                    val lockedHintChar = activeSlot.lockedIndices[colIdx]
+                                    val isLockedHint = lockedHintChar != null
+                                    val ch = lockedHintChar ?: currentInputMap[colIdx]
                                     val isCursor = (colIdx == cursorIndex && !isLockedHint)
 
                                     ActiveInputTile(
