@@ -26,6 +26,8 @@ data class GameUiState(
     val lastRevealedRowIndex: Int = -1,
     val newlyUnlockedCoords: Set<GridCoord> = emptySet(),
     val stats: PlayerStats = PlayerStats(),
+    val showHintOptionsDialog: Boolean = false,
+    val showGiveUpConfirmDialog: Boolean = false,
     val showPauseDialog: Boolean = false,
     val showStatsSheet: Boolean = false,
     val showHowToPlayDialog: Boolean = false,

@@ -37,28 +37,36 @@ enum class DifficultyLevel(
     val description: String,
     val prefer5x5: Boolean,
     val maxWords: Int,
-    val starterHints: Int
+    val starterHints: Int,
+    val dailyHintAllowance: Int,
+    val scoreMultiplierPercent: Int
 ) {
     EASY(
         displayName = "Easy",
-        description = "5x5 Grid • 6 Words (3–5 letters) • 1 Free Starter Letter",
+        description = "5x5 Grid • 6 Words • 1 Starter Letter • 3 Hints",
         prefer5x5 = true,
         maxWords = 6,
-        starterHints = 1
+        starterHints = 1,
+        dailyHintAllowance = 3,
+        scoreMultiplierPercent = 100
     ),
     MEDIUM(
         displayName = "Medium",
-        description = "6x6 Grid • 6–7 Words (3–6 letters) • Classic Deduction",
+        description = "6x6 Grid • 6–7 Words • Classic Deduction • 2 Hints",
         prefer5x5 = false,
         maxWords = 7,
-        starterHints = 0
+        starterHints = 0,
+        dailyHintAllowance = 2,
+        scoreMultiplierPercent = 125
     ),
     HARD(
         displayName = "Hard",
-        description = "6x6 Dense Grid • 7–8 Words (3–6 letters) • Maximum Challenge",
+        description = "6x6 Dense Grid • 7–8 Words • 1.5x Points • 1 Hint",
         prefer5x5 = false,
         maxWords = 8,
-        starterHints = 0
+        starterHints = 0,
+        dailyHintAllowance = 1,
+        scoreMultiplierPercent = 150
     )
 }
 
@@ -98,6 +106,7 @@ data class WordSlot(
     val targetWord: String,
     val guesses: List<GuessRow> = emptyList(),
     val lockedIndices: Map<Int, Char> = emptyMap(),
+    val hintCandidateWords: List<String> = emptyList(),
     val status: SlotStatus = SlotStatus.IN_PROGRESS,
     val autoSolvedByCascade: Boolean = false
 ) {
@@ -151,6 +160,7 @@ data class PuzzleBoardState(
     val cells: List<GridCell>,
     val slots: List<WordSlot>,
     val activeSlotId: String,
+    val hintsRemaining: Int = 2,
     val strikes: Int = 0,
     val score: Int = 0,
     val isBoardComplete: Boolean = false

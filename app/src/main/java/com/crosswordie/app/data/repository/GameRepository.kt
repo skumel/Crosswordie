@@ -19,6 +19,7 @@ data class PlayerStats(
     val bestDailyStreak: Int = 0,
     val lastCompletedDailyDate: String? = null,
     val endlessCurrentLevel: Int = 1,
+    val endlessHintBank: Int = 3,
     val endlessBoardsCleared: Int = 0,
     val totalWordsSolved: Int = 0,
     val totalCascadeAutoSolves: Int = 0,
@@ -142,6 +143,7 @@ class GameRepository(context: Context) {
                 val nextLevel = maxOf(current.endlessCurrentLevel, board.endlessLevel + 1)
                 current.copy(
                     endlessCurrentLevel = nextLevel,
+                    endlessHintBank = board.hintsRemaining.coerceIn(1, 6),
                     endlessBoardsCleared = current.endlessBoardsCleared + 1,
                     totalWordsSolved = current.totalWordsSolved + wordsSolvedCount,
                     totalCascadeAutoSolves = current.totalCascadeAutoSolves + cascadeSolvesCount,

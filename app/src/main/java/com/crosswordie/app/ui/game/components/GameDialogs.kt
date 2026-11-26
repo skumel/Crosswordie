@@ -2,6 +2,7 @@ package com.crosswordie.app.ui.game.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +15,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import com.crosswordie.app.domain.model.Direction
+import com.crosswordie.app.domain.model.WordSlot
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -347,8 +352,8 @@ fun HowToPlayDialog(
 
             RuleBullet(
                 num = "4",
-                title = "Zero Soft-Locks",
-                desc = "If you miss all 5 guesses on a word, it reveals with 0 points (+1 Strike) and still unlocks its intersecting letters so you can always finish the board!"
+                title = "Hints, Free Letters & Give Up 💡",
+                desc = "Use '3-Word Hint' to see 3 candidate words that fit, 'Free Letter' to unlock a tile, or 'Give Up' to reveal a tough word (0 pts) and unlock its intersections. Solve in fewer tries for massive points—and earn bonus Hints in Endless Mode!"
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -500,6 +505,190 @@ fun PauseGameDialog(
                     color = WordleRevealedAmber,
                     fontWeight = FontWeight.Bold
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun ThreeWordHintDialog(
+    slot: WordSlot,
+    hintsRemaining: Int,
+    isEndlessMode: Boolean,
+    onSelectCandidateWord: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        val dirName = if (slot.direction == Direction.ACROSS) "ACROSS" else "DOWN"
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(SlateSurface)
+                .border(1.dp, WordleYellow.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Lightbulb,
+                    contentDescription = null,
+                    tint = WordleYellow
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "3 POSSIBLE WORDS",
+                    color = WordleYellow,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            Text(
+                text = "One of these 3 words is the exact answer for ${slot.clueNumber} $dirName! Tap a word to fill your guess row:",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                for (candidate in slot.hintCandidateWords) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(SlateBackground)
+                            .border(1.2.dp, SlotActiveBorder, RoundedCornerShape(12.dp))
+                            .clickable { onSelectCandidateWord(candidate) }
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = candidate.toCharArray().joinToString(" "),
+                            color = TextPrimary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 1.5.sp
+                        )
+                        Text(
+                            text = "TRY →",
+                            color = SlotActiveBorder,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val footerNote = if (isEndlessMode) {
+                "💡 $hintsRemaining Hints left • Earn +1 Hint on 1st-try solves & Cascades!"
+            } else {
+                "💡 $hintsRemaining Hints remaining for this puzzle"
+            }
+            Text(
+                text = footerNote,
+                color = TextMuted,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center
+            )
+
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.padding(top = 4.dp)
+            ) {
+                Text(
+                    text = "Close",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun GiveUpWordDialog(
+    slot: WordSlot,
+    onConfirmGiveUp: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        val dirName = if (slot.direction == Direction.ACROSS) "ACROSS" else "DOWN"
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(SlateSurface)
+                .border(1.dp, WordleRevealedAmber.copy(alpha = 0.6f), RoundedCornerShape(18.dp))
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Flag,
+                    contentDescription = null,
+                    tint = WordleRevealedAmber
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "GIVE UP ON ${slot.clueNumber} $dirName?",
+                    color = WordleRevealedAmber,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "This will reveal ${slot.clueNumber} $dirName for 0 points (+1 Strike) and automatically unlock all of its intersecting letters so you can keep solving the crossword.",
+                color = TextSecondary,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 17.sp
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "KEEP TRYING",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Button(
+                    onClick = onConfirmGiveUp,
+                    colors = ButtonDefaults.buttonColors(containerColor = WordleRevealedAmber),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = "REVEAL WORD",
+                        color = TextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
             }
         }
     }

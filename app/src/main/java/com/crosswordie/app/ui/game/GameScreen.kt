@@ -24,10 +24,12 @@ import com.crosswordie.app.domain.model.GameMode
 import com.crosswordie.app.ui.game.components.CrosswordGridView
 import com.crosswordie.app.ui.game.components.EndGameSummaryDialog
 import com.crosswordie.app.ui.game.components.GameKeyboard
+import com.crosswordie.app.ui.game.components.GiveUpWordDialog
 import com.crosswordie.app.ui.game.components.HowToPlayDialog
 import com.crosswordie.app.ui.game.components.OpeningMenuScreen
 import com.crosswordie.app.ui.game.components.PauseGameDialog
 import com.crosswordie.app.ui.game.components.StatsDialog
+import com.crosswordie.app.ui.game.components.ThreeWordHintDialog
 import com.crosswordie.app.ui.game.components.TopHeaderBar
 import com.crosswordie.app.ui.game.components.WordGuessPanel
 import com.crosswordie.app.ui.theme.SlateBackground
@@ -91,6 +93,7 @@ fun GameScreen(
                     dailyDateString = board.dailyDateString,
                     endlessLevel = board.endlessLevel,
                     score = board.score,
+                    hintsRemaining = board.hintsRemaining,
                     strikes = board.strikes,
                     dailyStreak = state.stats.currentDailyStreak,
                     isBoardComplete = board.isBoardComplete,
@@ -121,9 +124,10 @@ fun GameScreen(
                         .fillMaxWidth()
                 )
 
-                // 3. Middle Zone (~37% weight): Dynamic 3-6 Letter Wordle Guess Matrix
+                // 3. Middle Zone (~39% weight): Dynamic 3-6 Letter Wordle Guess Matrix + Assist Bar
                 WordGuessPanel(
                     activeSlot = activeSlot,
+                    hintsRemaining = board.hintsRemaining,
                     currentInputMap = state.currentInputMap,
                     cursorIndex = state.cursorIndex,
                     bannerMessage = state.bannerMessage,
@@ -132,10 +136,13 @@ fun GameScreen(
                     onTileTapped = { colIdx -> viewModel.onGuessTileTapped(colIdx) },
                     onPrevSlot = { viewModel.cycleWordSlot(forward = false) },
                     onNextSlot = { viewModel.cycleWordSlot(forward = true) },
+                    onThreeWordHintClick = { viewModel.onThreeWordHintClicked() },
+                    onFreeLetterHintClick = { viewModel.onFreeLetterHintClicked() },
+                    onGiveUpWordClick = { viewModel.toggleGiveUpConfirmDialog(true) },
                     modifier = Modifier
-                        .weight(0.37f)
+                        .weight(0.39f)
                         .fillMaxWidth()
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = 3.dp)
                 )
 
                 // 4. Bottom Zone: Context-Aware Custom QWERTY Keyboard (Backspace on Left, Green Guess on Right)
@@ -156,6 +163,24 @@ fun GameScreen(
         }
 
         // Shared Dialogs (Accessible from both Opening Menu and In-Game)
+        if (state.showHintOptionsDialog && board != null && activeSlot != null) {
+            ThreeWordHintDialog(
+                slot = activeSlot,
+                hintsRemaining = board.hintsRemaining,
+                isEndlessMode = board.gameMode == GameMode.ENDLESS,
+                onSelectCandidateWord = { chosenWord -> viewModel.onSelectHintCandidateWord(chosenWord) },
+                onDismiss = { viewModel.dismissHintOptionsDialog() }
+            )
+        }
+
+        if (state.showGiveUpConfirmDialog && activeSlot != null) {
+            GiveUpWordDialog(
+                slot = activeSlot,
+                onConfirmGiveUp = { viewModel.onConfirmGiveUpWord() },
+                onDismiss = { viewModel.toggleGiveUpConfirmDialog(false) }
+            )
+        }
+
         if (state.showPauseDialog && board != null) {
             PauseGameDialog(
                 board = board,

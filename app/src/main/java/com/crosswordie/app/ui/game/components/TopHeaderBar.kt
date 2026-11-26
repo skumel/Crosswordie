@@ -46,6 +46,7 @@ fun TopHeaderBar(
     dailyDateString: String?,
     endlessLevel: Int,
     score: Int,
+    hintsRemaining: Int,
     strikes: Int,
     dailyStreak: Int,
     isBoardComplete: Boolean,
@@ -155,16 +156,17 @@ fun TopHeaderBar(
                 )
                 if (strikes > 0) {
                     Text(
-                        text = "$strikes Strike${if (strikes > 1) "s" else ""}",
+                        text = "💡$hintsRemaining • $strikes Strike${if (strikes > 1) "s" else ""}",
                         color = WordleRevealedAmber,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 } else {
                     Text(
-                        text = "0 Strikes",
-                        color = TextMuted,
-                        fontSize = 9.sp
+                        text = "💡 $hintsRemaining Hint${if (hintsRemaining == 1) "" else "s"}",
+                        color = com.crosswordie.app.ui.theme.WordleYellow,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }

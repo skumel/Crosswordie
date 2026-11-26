@@ -22,7 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -64,6 +67,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun WordGuessPanel(
     activeSlot: WordSlot,
+    hintsRemaining: Int,
     currentInputMap: Map<Int, Char>,
     cursorIndex: Int,
     bannerMessage: String?,
@@ -72,6 +76,9 @@ fun WordGuessPanel(
     onTileTapped: (Int) -> Unit,
     onPrevSlot: () -> Unit,
     onNextSlot: () -> Unit,
+    onThreeWordHintClick: () -> Unit,
+    onFreeLetterHintClick: () -> Unit,
+    onGiveUpWordClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val shakeOffset = remember { Animatable(0f) }
@@ -175,7 +182,50 @@ fun WordGuessPanel(
             }
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        // Power-Ups & Word Assist Bar (3-Word Hint | Free Letter | Give Up)
+        if (!activeSlot.isCompleted) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val alreadyHasWordHint = activeSlot.hintCandidateWords.isNotEmpty()
+                val canUseHint = hintsRemaining > 0 || alreadyHasWordHint
+
+                // 1. 3-Possible-Words Hint Chip
+                AssistActionChip(
+                    icon = Icons.Default.Lightbulb,
+                    label = if (alreadyHasWordHint) "View 3 Words" else "3-Word Hint ($hintsRemaining)",
+                    accentColor = if (canUseHint) WordleYellow else TextMuted,
+                    enabled = true,
+                    onClick = onThreeWordHintClick,
+                    modifier = Modifier.weight(1.18f)
+                )
+
+                // 2. Free Letter Unlock Chip
+                AssistActionChip(
+                    icon = Icons.Default.LockOpen,
+                    label = "Free Letter ($hintsRemaining)",
+                    accentColor = if (hintsRemaining > 0) WordleGreenGlow else TextMuted,
+                    enabled = true,
+                    onClick = onFreeLetterHintClick,
+                    modifier = Modifier.weight(1.12f)
+                )
+
+                // 3. Give Up Word Chip
+                AssistActionChip(
+                    icon = Icons.Default.Flag,
+                    label = "Give Up",
+                    accentColor = WordleRevealedAmber,
+                    enabled = true,
+                    onClick = onGiveUpWordClick,
+                    modifier = Modifier.weight(0.82f)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Dynamic 5-Row x L-Column Wordle Guess Matrix
         BoxWithConstraints(
@@ -425,5 +475,42 @@ private fun FutureGuessTile(
                 fontWeight = FontWeight.Bold
             )
         }
+    }
+}
+
+@Composable
+private fun AssistActionChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    accentColor: Color,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(SlateSurface)
+            .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = accentColor,
+            modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = label,
+            color = accentColor,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

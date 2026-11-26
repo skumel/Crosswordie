@@ -157,6 +157,9 @@ class GameViewModel(
                     mode = mode,
                     difficulty = chosenDifficulty,
                     endlessLevel = currentStats.endlessCurrentLevel,
+                    initialHintsOverride = if (mode == GameMode.ENDLESS) {
+                        currentStats.endlessHintBank.coerceIn(1, CascadeEngine.MAX_HINT_CAP)
+                    } else null,
                     salt = if (useFreshSalt) System.currentTimeMillis() else 0L
                 ).also { gameRepository.saveBoard(it) }
 
@@ -248,10 +251,13 @@ class GameViewModel(
 
     fun startNextEndlessPuzzle() {
         val difficulty = _uiState.value.selectedDifficulty
+        val carriedOverHints = _uiState.value.board?.hintsRemaining
         viewModelScope.launch {
             val gen = generator ?: return@launch
             val currentStats = withContext(ioDispatcher) { gameRepository.loadStats() }
             val nextLevel = currentStats.endlessCurrentLevel.coerceAtLeast(1)
+            val startingHints = (carriedOverHints ?: currentStats.endlessHintBank)
+                .coerceIn(1, CascadeEngine.MAX_HINT_CAP)
 
             val freshBoard = withContext(ioDispatcher) {
                 createFreshBoard(
@@ -259,6 +265,7 @@ class GameViewModel(
                     mode = GameMode.ENDLESS,
                     difficulty = difficulty,
                     endlessLevel = nextLevel,
+                    initialHintsOverride = startingHints,
                     salt = System.currentTimeMillis()
                 ).also { gameRepository.saveBoard(it) }
             }
@@ -266,7 +273,7 @@ class GameViewModel(
             applyBoardToUiState(
                 board = freshBoard,
                 stats = currentStats,
-                bannerMessage = "Level $nextLevel (${difficulty.displayName}) • ${freshBoard.gridSize}x${freshBoard.gridSize} Grid",
+                bannerMessage = "Level $nextLevel (${difficulty.displayName}) • 💡 $startingHints Hints Ready",
                 showEndDialog = false
             )
         }
@@ -375,7 +382,9 @@ class GameViewModel(
 
         if (locked.containsKey(targetIndex) || targetIndex !in 0 until slot.length) return
 
-        val newInput = HashMap(state.currentInputMap)
+        // Clean up any user-typed character at indices that are out of bounds for this slot
+        val sanitizedCurrentInput = state.currentInputMap.filterKeys { it in 0 until slot.length }
+        val newInput = HashMap(sanitizedCurrentInput)
         newInput.putAll(locked)
         newInput[targetIndex] = upper
 
@@ -433,7 +442,7 @@ class GameViewModel(
         val slot = state.activeSlot ?: return
         if (slot.isCompleted || board.isBoardComplete) return
 
-        val effectiveInput = HashMap(state.currentInputMap).apply {
+        val effectiveInput = HashMap(state.currentInputMap.filterKeys { it in 0 until slot.length }).apply {
             putAll(slot.lockedIndices)
         }
 
@@ -464,29 +473,216 @@ class GameViewModel(
         }
 
         val submission = CascadeEngine.submitGuess(board, guessWord)
+        applySubmissionResult(
+            previousSlot = slot,
+            submission = submission
+        )
+    }
+
+    /**
+     * Spends 1 Hint (or re-opens if already unlocked for this slot) to show 3 candidate words
+     * that fit the current word slot, allowing the player to tap one to fill it in!
+     */
+    fun onThreeWordHintClicked() {
+        val state = _uiState.value
+        val board = state.board ?: return
+        val slot = state.activeSlot ?: return
+        if (slot.isCompleted || board.isBoardComplete) return
+
+        // If 3-word hint was already unlocked on this word slot, re-open the options for free!
+        if (slot.hintCandidateWords.isNotEmpty()) {
+            _uiState.update { it.copy(showHintOptionsDialog = true) }
+            return
+        }
+
+        if (board.hintsRemaining <= 0) {
+            val tip = if (board.gameMode == GameMode.ENDLESS) {
+                "No Hints left! Solve a word in 1 try or trigger a Cascade to earn +1 💡"
+            } else {
+                "No Hints remaining for this puzzle"
+            }
+            _uiState.update {
+                it.copy(
+                    bannerMessage = tip,
+                    invalidGuessShakeTrigger = it.invalidGuessShakeTrigger + 1
+                )
+            }
+            return
+        }
+
+        val idx = wordIndex ?: return
+        val allBoardWords = board.slots.map { it.targetWord }.toSet()
+        val options = CascadeEngine.generateThreeWordHintOptions(
+            slot = slot,
+            wordIndex = idx,
+            boardTargetWords = allBoardWords,
+            seed = board.seed
+        )
+
+        val updatedSlot = slot.copy(hintCandidateWords = options)
+        val updatedBoard = board.copy(
+            hintsRemaining = (board.hintsRemaining - 1).coerceAtLeast(0),
+            slots = board.slots.map { if (it.id == slot.id) updatedSlot else it }
+        )
+        persistBoardAsync(updatedBoard)
+
+        _uiState.update {
+            it.copy(
+                board = updatedBoard,
+                showHintOptionsDialog = true,
+                bannerMessage = "💡 3 Possible Words unlocked for ${slot.id}!"
+            )
+        }
+    }
+
+    /**
+     * Fills the active guess row with a candidate word tapped from the 3-Word Hint popup.
+     */
+    fun onSelectHintCandidateWord(candidateWord: String) {
+        val state = _uiState.value
+        val slot = state.activeSlot ?: return
+        if (slot.isCompleted || candidateWord.length != slot.length) {
+            _uiState.update { it.copy(showHintOptionsDialog = false) }
+            return
+        }
+
+        val filledInput = HashMap<Int, Char>(slot.length)
+        for (i in 0 until slot.length) {
+            filledInput[i] = slot.lockedIndices[i] ?: candidateWord[i].uppercaseChar()
+        }
+        val lastUnlocked = findNextUnlockedIndexAfter(slot, filledInput, slot.length - 1)
+
+        _uiState.update {
+            it.copy(
+                currentInputMap = filledInput,
+                cursorIndex = lastUnlocked,
+                showHintOptionsDialog = false,
+                bannerMessage = "Loaded \"$candidateWord\" — tap GUESS to submit!"
+            )
+        }
+    }
+
+    fun dismissHintOptionsDialog() {
+        _uiState.update { it.copy(showHintOptionsDialog = false) }
+    }
+
+    /**
+     * Spends 1 Hint to permanently reveal one missing letter ("Free Letter") in the active word.
+     */
+    fun onFreeLetterHintClicked() {
+        val state = _uiState.value
+        val board = state.board ?: return
+        val slot = state.activeSlot ?: return
+        if (slot.isCompleted || board.isBoardComplete) return
+
+        if (board.hintsRemaining <= 0) {
+            val tip = if (board.gameMode == GameMode.ENDLESS) {
+                "No Hints left! Solve in 1 try or trigger a Cascade to earn +1 💡"
+            } else {
+                "No Hints remaining for this puzzle"
+            }
+            _uiState.update {
+                it.copy(
+                    bannerMessage = tip,
+                    invalidGuessShakeTrigger = it.invalidGuessShakeTrigger + 1
+                )
+            }
+            return
+        }
+
+        val result = CascadeEngine.useFreeLetterHint(board) ?: return
+        if (result.outcome == CascadeEngine.GuessOutcome.CONTINUE_SLOT) {
+            val updatedBoard = result.updatedBoard
+            persistBoardAsync(updatedBoard)
+            val updatedSlot = updatedBoard.activeSlot ?: return
+            val mergedInput = HashMap(state.currentInputMap).apply {
+                putAll(updatedSlot.lockedIndices)
+            }
+            val nextCursor = findFirstUnlockedIndex(updatedSlot, 0)
+            val nextKeyboard = WordleEvaluator.computeKeyboardState(
+                updatedSlot.guesses,
+                updatedSlot.lockedIndices
+            )
+            val cascadeNote = if (result.cascadedAutoSolvedSlotIds.isNotEmpty()) {
+                " • Cascade solved ${result.cascadedAutoSolvedSlotIds.joinToString(", ")}!"
+            } else ""
+
+            _uiState.update {
+                it.copy(
+                    board = updatedBoard,
+                    currentInputMap = mergedInput,
+                    cursorIndex = nextCursor,
+                    keyboardState = nextKeyboard,
+                    newlyUnlockedCoords = result.newlyUnlockedCoords,
+                    bannerMessage = "🔓 Free Letter unlocked!$cascadeNote"
+                )
+            }
+        } else {
+            applySubmissionResult(
+                previousSlot = slot,
+                submission = result
+            )
+        }
+    }
+
+    fun toggleGiveUpConfirmDialog(show: Boolean) {
+        val slot = _uiState.value.activeSlot
+        if (show && (slot == null || slot.isCompleted)) return
+        _uiState.update { it.copy(showGiveUpConfirmDialog = show) }
+    }
+
+    /**
+     * Confirms giving up on the active word: reveals the word with 0 points (+1 Strike)
+     * and cascades all of its intersections so the player can keep solving the rest of the board.
+     */
+    fun onConfirmGiveUpWord() {
+        val state = _uiState.value
+        val board = state.board ?: return
+        val slot = state.activeSlot ?: return
+        if (slot.isCompleted || board.isBoardComplete) {
+            _uiState.update { it.copy(showGiveUpConfirmDialog = false) }
+            return
+        }
+
+        _uiState.update { it.copy(showGiveUpConfirmDialog = false) }
+        val submission = CascadeEngine.giveUpActiveWord(board)
+        applySubmissionResult(
+            previousSlot = slot,
+            submission = submission
+        )
+    }
+
+    private fun applySubmissionResult(
+        previousSlot: WordSlot,
+        submission: CascadeEngine.GuessSubmissionResult
+    ) {
         val updatedBoard = submission.updatedBoard
         persistBoardAsync(updatedBoard)
 
-        val nextSlot = updatedBoard.activeSlot ?: slot
+        val nextSlot = updatedBoard.activeSlot ?: previousSlot
         val nextInput = HashMap(nextSlot.lockedIndices)
         val nextCursor = findFirstUnlockedIndex(nextSlot, 0)
         val nextKeyboard = WordleEvaluator.computeKeyboardState(nextSlot.guesses, nextSlot.lockedIndices)
+
+        val hintBonusSuffix = if (submission.bonusHintsEarned > 0) {
+            " • +${submission.bonusHintsEarned} 💡 Earned!"
+        } else ""
 
         val statusBanner = when (submission.outcome) {
             CascadeEngine.GuessOutcome.CONTINUE_SLOT -> null
             CascadeEngine.GuessOutcome.SLOT_SOLVED -> {
                 if (submission.cascadedAutoSolvedSlotIds.isNotEmpty()) {
                     val cascadedStr = submission.cascadedAutoSolvedSlotIds.joinToString(", ")
-                    "Solved ${slot.id}! Cascade auto-solved $cascadedStr! (+${submission.pointsEarned} pts)"
+                    "Solved ${previousSlot.id}! Cascade solved $cascadedStr! (+${submission.pointsEarned} pts)$hintBonusSuffix"
                 } else {
-                    "Solved ${slot.id} (${slot.targetWord})! Intersections unlocked (+${submission.pointsEarned} pts)"
+                    "Solved ${previousSlot.id} (${previousSlot.targetWord})! +${submission.pointsEarned} pts$hintBonusSuffix"
                 }
             }
             CascadeEngine.GuessOutcome.SLOT_REVEALED_FAILED -> {
-                "${slot.id} revealed: ${slot.targetWord} (0 pts) • Intersections unlocked!"
+                "${previousSlot.id} revealed: ${previousSlot.targetWord} (0 pts) • Intersections unlocked!"
             }
             CascadeEngine.GuessOutcome.BOARD_COMPLETED -> {
-                "Crossword Complete! Score: ${updatedBoard.score}"
+                "Crossword Complete! Score: ${updatedBoard.score}$hintBonusSuffix"
             }
         }
 
@@ -607,9 +803,10 @@ class GameViewModel(
         mode: GameMode,
         difficulty: DifficultyLevel,
         endlessLevel: Int,
+        initialHintsOverride: Int? = null,
         salt: Long = 0L
     ): PuzzleBoardState {
-        return when (mode) {
+        val generated = when (mode) {
             GameMode.DAILY -> {
                 val today = LocalDate.now()
                 val dailySeed = (today.toEpochDay() * GOLDEN_GAMMA) xor
@@ -635,6 +832,11 @@ class GameViewModel(
                     prefer5x5 = difficulty.prefer5x5
                 )
             }
+        }
+        return if (initialHintsOverride != null) {
+            generated.copy(hintsRemaining = initialHintsOverride)
+        } else {
+            generated
         }
     }
 

@@ -350,7 +350,8 @@ class CrosswordGenerator(
             gridSize = template.gridSize,
             cells = cells,
             slots = slots,
-            activeSlotId = slots.first().id
+            activeSlotId = slots.first().id,
+            hintsRemaining = difficulty.dailyHintAllowance
         )
     }
 
